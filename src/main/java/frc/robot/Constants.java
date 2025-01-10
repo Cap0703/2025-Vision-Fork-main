@@ -2,8 +2,13 @@ package frc.robot;
 
 import static edu.wpi.first.units.Units.*;
 
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.Distance;
+import edu.wpi.first.math.util.Units;
 
 public class Constants {
     
@@ -73,4 +78,12 @@ public class Constants {
         public static final Distance kBackRightXPos = Inches.of(-12.375);
         public static final Distance kBackRightYPos = Inches.of(-12.375);
     }
+    public static final class VisionConstants {
+        public static final Transform3d cameraToRobot = new Transform3d(
+          new Translation3d(7,Units.inchesToMeters(-10.3625),Units.inchesToMeters(12)), // milton: 14
+          new Rotation3d(0,0.413,3.412)
+        );
+        public static final Pose2d startingPose = new Pose2d();
+        public static final int DETECTED_ALLIANCE_TRHESHOLD = 1;
+  }
 }

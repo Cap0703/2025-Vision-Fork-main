@@ -13,11 +13,21 @@ import com.ctre.phoenix6.swerve.*;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants.*;
 
 import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.units.measure.*;
 
 public class SwerveSubsystem {
+    private SwerveModule frontLeftModule;
+    private SwerveModule frontRightModule;
+    private SwerveModule backLeftModule;
+    private SwerveModule backRightModule;
+
+
+
     // Both sets of gains need to be tuned to your individual robot.
 
     // The steer motor uses any SwerveModule.SteerRequestType control request with the
@@ -149,7 +159,32 @@ public class SwerveSubsystem {
         return new CommandSwerveDrivetrain(
             DrivetrainConstants, FrontLeft, FrontRight, BackLeft, BackRight
         );
+        
+        public void drive(double forwardSpeed, double strafeSpeed, double rotationSpeed) {
+            // Create ChassisSpeeds object from input speeds
+            ChassisSpeeds chassisSpeeds = new ChassisSpeeds(forwardSpeed, strafeSpeed, rotationSpeed);
+            
+            // Define the kinematics for your swerve drive
+            SwerveDriveKinematics kinematics = new SwerveDriveKinematics(
+                frontLeftModule.getLocation(),
+                frontRightModule.getLocation(),
+                backLeftModule.getLocation(),
+                backRightModule.getLocation()
+            );
+    
+            // Use inverse kinematics to convert chassis speeds into module states
+            SwerveModuleState[] states = kinematics.toSwerveModuleStates(chassisSpeeds);
+            
+            // Set the desired state for each swerve module
+            frontLeftModule.setDesiredState(states[0]);
+            frontRightModule.setDesiredState(states[1]);
+            backLeftModule.setDesiredState(states[2]);
+            backRightModule.setDesiredState(states[3]);
+        }
+        
+        
     }
+
 
 
     /**

@@ -5,7 +5,9 @@
 package frc.robot;
 
 import frc.robot.Commands.swerve.CommandSwerveDrivetrain;
+import frc.robot.Commands.swerve.VisionAlign;
 import frc.robot.Subsystems.SwerveSubsystem;
+import frc.robot.Subsystems.Vision;
 
 import static edu.wpi.first.units.Units.*;
 
@@ -36,8 +38,12 @@ public class RobotContainer {
     private final CommandXboxController joystick = new CommandXboxController(Constants.InputConstants.kDriverControllerPort0);
 
     public final CommandSwerveDrivetrain drivetrain = SwerveSubsystem.createDrivetrain();
+    
 
     public RobotContainer() {
+        SwerveSubsystem swerveDrivetrain = new SwerveSubsystem();
+        Vision visionSubsystem = new Vision();
+        VisionAlign visionAlign = new VisionAlign(visionSubsystem, swerveDrivetrain);
         configureBindings();
     }
 

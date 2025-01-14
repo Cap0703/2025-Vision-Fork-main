@@ -1,7 +1,9 @@
-package frc.robot.Subsystems;
+package frc.robot.commands.generated;
 
 import frc.robot.Constants;
-import frc.robot.Commands.swerve.CommandSwerveDrivetrain;
+import frc.robot.Constants.CanId;
+import frc.robot.Constants.SwerveConstants;
+import frc.robot.subsystems.CommandSwerveDrivetrain;
 
 import static edu.wpi.first.units.Units.*;
 
@@ -13,28 +15,23 @@ import com.ctre.phoenix6.swerve.*;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants.*;
 
 import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
-import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
+import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.units.measure.*;
 
-public class SwerveSubsystem {
-    private SwerveModule frontLeftModule;
-    private SwerveModule frontRightModule;
-    private SwerveModule backLeftModule;
-    private SwerveModule backRightModule;
-
-
-
+public class TunerConstants {
     // Both sets of gains need to be tuned to your individual robot.
 
     // The steer motor uses any SwerveModule.SteerRequestType control request with the
     // output type specified by SwerveModuleConstants.SteerMotorClosedLoopOutput
     private static final Slot0Configs steerGains = new Slot0Configs()
-        .withKP(100).withKI(0).withKD(0.5)
-        .withKS(0.1).withKV(1.59).withKA(0)
+        .withKP(48).withKI(0).withKD(0.2)  
+        .withKS(0).withKV(0).withKA(0)
         .withStaticFeedforwardSign(StaticFeedforwardSignValue.UseClosedLoopSign);
     // When using closed-loop control, the drive motor uses the control
     // output type specified by SwerveModuleConstants.DriveMotorClosedLoopOutput
@@ -159,32 +156,7 @@ public class SwerveSubsystem {
         return new CommandSwerveDrivetrain(
             DrivetrainConstants, FrontLeft, FrontRight, BackLeft, BackRight
         );
-        
-        public void drive(double forwardSpeed, double strafeSpeed, double rotationSpeed) {
-            // Create ChassisSpeeds object from input speeds
-            ChassisSpeeds chassisSpeeds = new ChassisSpeeds(forwardSpeed, strafeSpeed, rotationSpeed);
-            
-            // Define the kinematics for your swerve drive
-            SwerveDriveKinematics kinematics = new SwerveDriveKinematics(
-                frontLeftModule.getLocation(),
-                frontRightModule.getLocation(),
-                backLeftModule.getLocation(),
-                backRightModule.getLocation()
-            );
-    
-            // Use inverse kinematics to convert chassis speeds into module states
-            SwerveModuleState[] states = kinematics.toSwerveModuleStates(chassisSpeeds);
-            
-            // Set the desired state for each swerve module
-            frontLeftModule.setDesiredState(states[0]);
-            frontRightModule.setDesiredState(states[1]);
-            backLeftModule.setDesiredState(states[2]);
-            backRightModule.setDesiredState(states[3]);
-        }
-        
-        
     }
-
 
 
     /**
@@ -266,6 +238,64 @@ public class SwerveSubsystem {
                 drivetrainConstants, odometryUpdateFrequency,
                 odometryStandardDeviation, visionStandardDeviation, modules
             );
+        }
+
+        private final SwerveModule<TalonFX, TalonFX, CANcoder> frontLeft = getModule(0);
+        private final SwerveModule<TalonFX, TalonFX, CANcoder> frontRight = getModule(1);
+        private final SwerveModule<TalonFX, TalonFX, CANcoder> backLeft = getModule(2);
+        private final SwerveModule<TalonFX, TalonFX, CANcoder>backRight = getModule(3);
+
+        private final TalonFX frontLeftDrive = frontLeft.getDriveMotor();
+        private final TalonFX frontRightDrive = frontRight.getDriveMotor();
+        private final TalonFX backLeftDrive = backLeft.getDriveMotor();
+        private final TalonFX backRightDrive = backRight.getDriveMotor();
+
+        // private final TalonFX frontLeftSteer = frontLeft.getSteerMotor();
+        // private final TalonFX frontRightSteer = frontLeft.getSteerMotor();
+        // private final TalonFX backLeftSteer = backLeft.getSteerMotor();
+        // private final TalonFX backRightSteer = backRight.getSteerMotor();
+
+        private final CANcoder frontLeftEncoder = (CANcoder) frontLeft.getEncoder();
+        private final CANcoder frontRightEncoder = (CANcoder) frontRight.getEncoder();
+        private final CANcoder backLeftEncoder = (CANcoder) backLeft.getEncoder();
+        private final CANcoder backRightEncoder = (CANcoder) backRight.getEncoder();
+
+        private final Pigeon2 pigeon = new Pigeon2(CanId.Pigeon, "Canivore");
+
+        private final SwerveDriveOdometry odometer = new SwerveDriveOdometry(
+            SwerveConstants.kDriveKinematics,
+            pigeon.getRotation2d(), 
+            new SwerveModulePosition[]{
+                new SwerveModulePosition(frontLeftDrive.getPosition().getValueAsDouble(), new Rotation2d(frontLeftEncoder.getAbsolutePosition().getValue())),
+                new SwerveModulePosition(frontRightDrive.getPosition().getValueAsDouble(), new Rotation2d(frontRightEncoder.getAbsolutePosition().getValue())),
+                new SwerveModulePosition(backLeftDrive.getPosition().getValueAsDouble(), new Rotation2d(backLeftEncoder.getAbsolutePosition().getValue())),
+                new SwerveModulePosition(backRightDrive.getPosition().getValueAsDouble(), new Rotation2d(backRightEncoder.getAbsolutePosition().getValue()))
+            }, new Pose2d(0, 0, new Rotation2d()) // Initial pose
+            );
+
+        public SwerveDriveOdometry getOdometer(){
+            return odometer;
+        }
+
+        public Pose2d getPose2d(){
+            return odometer.getPoseMeters();
+        }
+
+        public void resetOdometer(Pose2d pose) {
+            odometer.resetPosition(
+                pigeon.getRotation2d(),
+                new SwerveModulePosition[]{
+                    new SwerveModulePosition(frontLeftDrive.getPosition().getValueAsDouble(), new Rotation2d(frontLeftEncoder.getAbsolutePosition().getValue())),
+                    new SwerveModulePosition(frontRightDrive.getPosition().getValueAsDouble(), new Rotation2d(frontRightEncoder.getAbsolutePosition().getValue())),
+                    new SwerveModulePosition(backLeftDrive.getPosition().getValueAsDouble(), new Rotation2d(backLeftEncoder.getAbsolutePosition().getValue())),
+                    new SwerveModulePosition(backRightDrive.getPosition().getValueAsDouble(), new Rotation2d(backRightEncoder.getAbsolutePosition().getValue()))
+                },
+                pose
+            );
+        }
+
+        public ChassisSpeeds getRobotRelativeSpeeds() {
+            return getState().Speeds; 
         }
     }
 }

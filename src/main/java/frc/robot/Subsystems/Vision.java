@@ -1,6 +1,16 @@
-package frc.robot.Subsystems;
+package frc.robot.subsystems;
 
-// Importing necessary libraries for working with the camera, photon vision, JSON parsing, and various utilities.
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -13,28 +23,43 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.photonvision.PhotonCamera;
+import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.PhotonPoseEstimator.PoseStrategy;
 import org.photonvision.PhotonUtils;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.wpi.first.apriltag.AprilTagFieldLayout;
-import edu.wpi.first.math.geometry.Pose3d;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Constants.VisionConstants;
+public class Vision extends SubsystemBase{
 
-// The Vision class extends SubsystemBase, meaning it is a subsystem for a robot, handling vision processing tasks.
-public class Vision extends SubsystemBase {
-
-    // Creates an instance of the PhotonCamera class to interface with the camera.
     PhotonCamera camera = new PhotonCamera("Arducam_OV9281_USB_Camera");
 
-    // Sets of fiducial IDs representing targets for different alliances (Red and Blue).
-    static final Set<Integer> redTargets = new HashSet<>(Arrays.asList(15, 5, 3, 2, 1, 6, 7, 8, 9, 10, 11));
-    static final Set<Integer> blueTargets = new HashSet<>(Arrays.asList(4, 14, 16, 12, 13, 17, 18, 19, 20, 21, 22));
+    public Transform3d robotToCam = new Transform3d(new Translation3d(0.5, 0.0, 0.5), new Rotation3d(0,0,0)); //Cam mounted facing forward, half a meter forward of center, half a meter up from center.
+   // public AprilTagFieldLayout aprilTagFieldLayout = loadAprilTagFieldLayout("Reefscape 2025.json");
+    public AprilTagFieldLayout aprilTagFieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2024Crescendo);    
+    public PhotonPoseEstimator photonPoseEstimator = new PhotonPoseEstimator(aprilTagFieldLayout, PoseStrategy.CLOSEST_TO_REFERENCE_POSE, robotToCam);
+    
+    static final Set<Integer> redTargets = new HashSet<>(Arrays.asList(1,2,3,4,5,6,7,8,9,10,11));
+    static final Set<Integer> blueTargets = new HashSet<>(Arrays.asList(12,13,14,15,16,17,18,19,20,21,22));
 
-    // A method that loads an AprilTag field layout from a given JSON file (providing tag locations on the field).
+    static final Set<Integer> blueReef = new HashSet<>(Arrays.asList(17,18,19,20,21,22));
+    static final Set<Integer> redReef = new HashSet<>(Arrays.asList(6,7,8,9,10,11));
+
+    static final Set<Integer> blueBarge = new HashSet<>(Arrays.asList(4,14));
+    static final Set<Integer> redBarge = new HashSet<>(Arrays.asList(5,15));
+
+    static final Set<Integer> blueCoralStation = new HashSet<>(Arrays.asList(12,13));
+    static final Set<Integer> redCoralStation = new HashSet<>(Arrays.asList(1,2));
+
+    static final Set<Integer> blueProcessor = new HashSet<>(Arrays.asList(16));
+    static final Set<Integer> redProcessor = new HashSet<>(Arrays.asList(3));
+
+    public enum DetectedAlliance {RED, BLUE, NONE};
+
+    private List<PhotonPipelineResult> currentResultList;
+    private PhotonPipelineResult currentResult;
+
     public static AprilTagFieldLayout loadAprilTagFieldLayout(String resourceFile) { 
         try (InputStream is = Vision.class.getResourceAsStream(resourceFile); 
         InputStreamReader isr = new InputStreamReader(is, StandardCharsets.UTF_8)) { 
@@ -44,21 +69,14 @@ public class Vision extends SubsystemBase {
             throw new UncheckedIOException(e); 
         } 
     }
+    
 
-    // Loads the field layout for the 2025 'reefscape' competition field from a JSON file.
-    public AprilTagFieldLayout aprilTagFieldLayout = loadAprilTagFieldLayout("/edu/wpi/first/apriltag/2025-reefscape.json");
-
-    // Enum to represent the alliance that is detected (RED, BLUE, or NONE).
-    public enum DetectedAlliance {RED, BLUE, NONE};
-
-    // Method to determine the current alliance based on the number of red and blue targets detected.
     public DetectedAlliance getAllianceStatus() {
-        var result = getCamResult(); // Get the latest camera result.
-        List<PhotonTrackedTarget> targets = result.getTargets(); // Get a list of targets from the result.
+        var result = currentResult;
+        List<PhotonTrackedTarget> targets = result.getTargets();
         var redTargetCount = 0;
         var blueTargetCount = 0;
 
-        // Loop through all targets and count how many belong to each alliance (red or blue).
         for (PhotonTrackedTarget target : targets) {
             if (redTargets.contains(target.getFiducialId())) {
                 redTargetCount += 1;
@@ -68,54 +86,166 @@ public class Vision extends SubsystemBase {
             }
         }
 
-        // Compare the counts and return the alliance with the most targets detected, above a threshold.
-        if (redTargetCount > blueTargetCount && redTargetCount >= VisionConstants.DETECTED_ALLIANCE_TRHESHOLD) {
+        if (redTargetCount > blueTargetCount && redTargetCount >= 1) {
             return DetectedAlliance.RED;
-        } else if (blueTargetCount > redTargetCount && blueTargetCount >= VisionConstants.DETECTED_ALLIANCE_TRHESHOLD) {
+        } else if (blueTargetCount > redTargetCount && blueTargetCount >= 1) {
             return DetectedAlliance.BLUE;
-        } else {
-            return DetectedAlliance.NONE; // No alliance detected.
-        }
+        } else return DetectedAlliance.NONE;
     }
 
-    // Method to estimate the 3D pose (position and orientation) of the robot relative to the field.
     public Pose3d get3dPose() {
-        var result = getCamResult(); // Get the latest camera result.
-        if (result.hasTargets()) { // If targets are detected:
-            PhotonTrackedTarget target = result.getBestTarget(); // Get the best (most likely) target.
-            Optional<Pose3d> optionalPose = aprilTagFieldLayout.getTagPose(target.getFiducialId()); // Get the pose of the target.
+        var result = currentResult; 
+        if (result.hasTargets() && result != null) { 
+            PhotonTrackedTarget target = result.getBestTarget(); 
+            Optional<Pose3d> optionalPose = aprilTagFieldLayout.getTagPose(target.getFiducialId()); 
 
-            // Use the camera's transformation data and field layout to estimate the robot's position.
-            Pose3d cameraRobotPose = PhotonUtils.estimateFieldToRobotAprilTag(target.getBestCameraToTarget(), optionalPose.get(), VisionConstants.cameraToRobot);
-            return cameraRobotPose; // Return the estimated robot pose.
-        } else { 
-            return null; // If no targets are detected, return null (no pose).
-        }
+            Pose3d cameraRobotPose = PhotonUtils.estimateFieldToRobotAprilTag(target.getBestCameraToTarget(), optionalPose.get(), robotToCam);
+            return cameraRobotPose; 
+        } else return null; 
+    }
+    
+    public Pose2d get2dPose() {
+        if (get3dPose() != null) {
+            Pose2d convertedPose2d = get3dPose().toPose2d();
+            return convertedPose2d;
+        } else return null;
     }
 
-    // Method to get the latest camera result.
-    public PhotonPipelineResult getCamResult() {
-        List<PhotonPipelineResult> results = camera.getAllUnreadResults(); // Get all unread results from the camera.
-        if (results.isEmpty()) { 
-            return new PhotonPipelineResult(); // If no results are available, return an empty result.
-        } 
-        return results.get(results.size() - 1); // Return the most recent result.
-    }
-
-    // Method to check if there is at least one target detected.
     public boolean hasTarget() {
-        var result = getCamResult(); // Get the latest camera result.
-        return result.hasTargets(); // Return true if targets are detected, otherwise false.
+        if (currentResult != null){
+            var result = currentResult.hasTargets();
+            return result; 
+        } else return false;
     }
 
-    // Method to get the timestamp of the most recent camera result (time of image capture).
     public double getCamTimeStamp() {
-        var imageCaptureTime = getCamResult().getTimestampSeconds(); // Get the timestamp of the result.
-        return imageCaptureTime; // Return the timestamp.
+            double imageCaptureTime = currentResult.getTimestampSeconds(); 
+            return imageCaptureTime; 
     }
 
-    // Periodic method that is called periodically to update subsystem state (currently empty).
+    // public PhotonTrackedTarget getBestTarget() {
+    //     if (hasTarget()){
+    //         PhotonTrackedTarget target = getCamResult().
+    //         return target;
+    //     } else {
+    //         return null;
+    //     }
+        
+    // }
+
+    public int getBestAprilTagId(){
+        if(hasTarget() && currentResult != null){
+            return currentResult.getBestTarget().getFiducialId();
+        } else return 0;
+        
+    }
+
+    public Rotation2d getAngleToAprilTag() {
+        if (hasTarget() && currentResult != null){
+            double yaw = currentResult.getBestTarget().getYaw(); 
+            Rotation2d cameraYaw = Rotation2d.fromDegrees(yaw);
+            Rotation2d robotToCamera = new Rotation2d(0); // Replace with your camera's mounting ang
+            return cameraYaw.plus(robotToCamera);
+        } else {
+            return null;
+        }
+        
+    }
+
+    public Rotation2d getDegreesToGamePiece() {
+        // Axis are flipped due to FieldCentric M
+        if (hasTarget() && currentResult != null) {
+            int id = getBestAprilTagId();
+            switch (getClosestGamePiece(id)) {
+                case "Blue Reef":
+                    switch (id) {
+                        case 17: return Rotation2d.fromDegrees(60);
+                        case 18: return Rotation2d.fromDegrees(0);
+                        case 19: return Rotation2d.fromDegrees(300);
+                        case 20: return Rotation2d.fromDegrees(240);
+                        case 21: return Rotation2d.fromDegrees(180);
+                        case 22: return Rotation2d.fromDegrees(120);
+                    }
+                    break;
+                case "Red Reef":
+                    switch (id) {
+                        case 6: return Rotation2d.fromDegrees(300);
+                        case 7: return Rotation2d.fromDegrees(0);
+                        case 8: return Rotation2d.fromDegrees(60);
+                        case 9: return Rotation2d.fromDegrees(120);
+                        case 10: return Rotation2d.fromDegrees(180);
+                        case 11: return Rotation2d.fromDegrees(240);
+                    }
+                    break;
+                case "Blue Barge":
+                    switch (id) {
+                        case 14: return Rotation2d.fromDegrees(180);
+                        case 4: return Rotation2d.fromDegrees(0);
+                    }
+                    break;
+                case "Red Barge":
+                    switch (id) {
+                        case 15: return Rotation2d.fromDegrees(0);
+                        case 5: return Rotation2d.fromDegrees(180);
+                    }
+                    break;
+                case "Blue Coral Station":
+                    switch (id) {
+                        case 12: return Rotation2d.fromDegrees(245);
+                        case 13: return Rotation2d.fromDegrees(125);
+                    }
+                    break;
+                case "Red Coral Station":
+                    switch (id) {
+                        case 2: return Rotation2d.fromDegrees(245);
+                        case 1: return Rotation2d.fromDegrees(125);
+                    }
+                    break;
+                case "Blue Processor":
+                    return Rotation2d.fromDegrees(270);
+                case "Red Processor":
+                    return Rotation2d.fromDegrees(270);
+                default:
+                    return Rotation2d.fromDegrees(-1); // Invalid case
+            }
+        }
+        return Rotation2d.fromDegrees(-1); // No target case
+    }
+    
+    
+    public String getClosestGamePiece(int id) {
+        if(hasTarget() && currentResult != null){
+            if (blueReef.contains(id)){
+                return "Blue Reef";
+            } else if(redReef.contains(id)){
+                return "Red Reef";
+            } else if(blueBarge.contains(id)){
+                return "Blue Barge";
+            } else if(redBarge.contains(id)){
+                return "Red Barge";
+            } else if(blueCoralStation.contains(id)){
+                return "Blue Coral Station";
+            } else if(redCoralStation.contains(id)){
+                return "Red Coral Station";
+            } else if(blueProcessor.contains(id)){
+                return "Blue Processor";
+            } else if(redProcessor.contains(id)){
+                return "Red Processor";
+            } else return "Detected ID but not game piece, check code";
+        } else return "none";
+    }
+           
     @Override
     public void periodic() {
+        currentResultList = camera.getAllUnreadResults();
+        for (int i = currentResultList.size() - 1; i >= 0; i--) {
+            PhotonPipelineResult result = currentResultList.get(i);
+            if (result.hasTargets()) {
+                currentResult = result;
+                break;
+            } else currentResult = null;
+        }
+        SmartDashboard.putNumber("Focused April Tag: ", getBestAprilTagId());
+        SmartDashboard.putString("Game Piece in Focus: ", getClosestGamePiece(getBestAprilTagId()));
     }
 }
